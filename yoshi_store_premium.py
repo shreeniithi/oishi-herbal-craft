@@ -999,7 +999,7 @@ elif current_page == "admin":
                         else:
                             st.error("Category already exists!")
         
-        with subtab2:
+        with subtab3:
             cats = get_categories()
             if not cats.empty:
                 st.markdown("### Edit or Delete Categories")
@@ -1071,9 +1071,17 @@ elif current_page == "admin":
         with ptabs[2]:
             prods = get_products()
             if not prods.empty:
-                selected_prod = st.selectbox("Select Product", prods['name'].tolist())
+                selected_prod = st.selectbox("Select Product to Edit/Delete", prods['name'].tolist())
                 prod_data = prods[prods['name'] == selected_prod].iloc[0]
                 
+                # Show product details
+                st.markdown(f"""
+                **Product ID:** {prod_data['id']}  
+                **Category:** {prod_data['category_name']}  
+                **Current Price:** ₹{int(prod_data['price'])}
+                """)
+                
+                # Edit Form
                 with st.form("edit_prod_form"):
                     prod_name = st.text_input("Name", value=prod_data['name'])
                     prod_price = st.number_input("Price", value=float(prod_data['price']))
@@ -1084,11 +1092,19 @@ elif current_page == "admin":
                     prod_ben = st.text_area("Benefits", value=prod_data['benefits'] or "")
                     prod_img = st.file_uploader("New Image (optional)", type=["jpg", "jpeg", "png", "webp"])
                     
-                    if st.form_submit_button("Update Product"):
-                        img_bytes = prod_img.read() if prod_img else None
-                        update_product(prod_data['id'], prod_name, prod_desc, prod_ingr, prod_ben, prod_price, prod_disc if prod_disc > 0 else None, prod_badge, img_bytes)
-                        st.success("✅ Updated!")
-                        st.rerun()
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.form_submit_button("💾 Update Product", use_container_width=True):
+                            img_bytes = prod_img.read() if prod_img else None
+                            update_product(prod_data['id'], prod_name, prod_desc, prod_ingr, prod_ben, prod_price, prod_disc if prod_disc > 0 else None, prod_badge, img_bytes)
+                            st.success("✅ Updated!")
+                            st.rerun()
+                    
+                    with col2:
+                        if st.form_submit_button("🗑️ Delete Product", use_container_width=True):
+                            delete_product(prod_data['id'])
+                            st.success(f"✅ Deleted '{prod_name}'!")
+                            st.rerun()
     
     # TAB 4: ORDERS
     with admin_tabs[3]:
