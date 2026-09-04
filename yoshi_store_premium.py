@@ -3,84 +3,61 @@ import sqlite3
 import pandas as pd
 from PIL import Image
 import io
-import json
 from datetime import datetime
-import base64
 
 # ═════════════════════════════════════════════════════════════════════════════
-# DATABASE SETUP WITH ENHANCED SCHEMA
+# DATABASE SETUP
 # ═════════════════════════════════════════════════════════════════════════════
 
-DB_FILE = "yoshi_premium.db"
+DB_FILE = "oishi_premium.db"
 
 def init_db():
-    """Initialize database with new hierarchical category structure"""
+    """Initialize database - NO DEFAULT DATA"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     
-    # Brand Settings Table
+    # Brand Settings
     c.execute('''
         CREATE TABLE IF NOT EXISTS brand_settings (
             id INTEGER PRIMARY KEY,
-            brand_name TEXT DEFAULT 'Yoshi',
-            tagline TEXT DEFAULT 'Pure Handcrafted Organic Goodness',
-            primary_color TEXT DEFAULT '#1b3c22',
-            secondary_color TEXT DEFAULT '#f7cb65',
-            background_color TEXT DEFAULT '#fcfbf7',
-            logo_text TEXT DEFAULT '🌿 YOSHI 🍯',
+            brand_name TEXT DEFAULT 'OISHI',
+            tagline TEXT DEFAULT 'Purely Herbal, Purely Divine',
+            primary_color TEXT DEFAULT '#2d5016',
+            secondary_color TEXT DEFAULT '#d4af37',
+            accent_color TEXT DEFAULT '#f5f0e8',
+            logo_emoji TEXT DEFAULT '🌿',
             about_text TEXT
         )
     ''')
     
-    # Categories Table (Main categories like Soap, Honey, etc.)
+    # Categories Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
-            icon TEXT,
-            description TEXT
+            emoji TEXT,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
-    # Subcategories Table
+    # Products Table
     c.execute('''
-        CREATE TABLE IF NOT EXISTS subcategories (
+        CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER,
             name TEXT NOT NULL,
             description TEXT,
-            FOREIGN KEY (category_id) REFERENCES categories(id)
-        )
-    ''')
-    
-    # Enhanced Products Table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subcategory_id INTEGER,
-            title TEXT NOT NULL,
             ingredients TEXT,
-            regular_price REAL NOT NULL,
-            sale_price REAL,
-            rating REAL DEFAULT 4.8,
-            reviews_count INTEGER DEFAULT 50,
-            description TEXT,
             benefits TEXT,
+            price REAL NOT NULL,
+            discount_price REAL,
+            rating REAL DEFAULT 5.0,
+            reviews INTEGER DEFAULT 0,
+            image_data BLOB,
             badge TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (subcategory_id) REFERENCES subcategories(id)
-        )
-    ''')
-    
-    # Product Images Table (Support multiple images)
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS product_images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id INTEGER,
-            image_data BLOB NOT NULL,
-            alt_text TEXT,
-            is_primary BOOLEAN DEFAULT 0,
-            FOREIGN KEY (product_id) REFERENCES products(id)
+            FOREIGN KEY (category_id) REFERENCES categories(id)
         )
     ''')
     
@@ -106,87 +83,10 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM brand_settings")
     if c.fetchone()[0] == 0:
         c.execute('''
-            INSERT INTO brand_settings (brand_name, tagline, about_text)
-            VALUES (?, ?, ?)
-        ''', ('Yoshi', 'Pure Handcrafted Organic Goodness', 
-              'Founded on the promise to deliver pure, handcrafted organic goods from nature directly to your home.'))
-    
-    # Seed sample categories and products if empty
-    c.execute("SELECT COUNT(*) FROM categories")
-    if c.fetchone()[0] == 0:
-        # Add main categories
-        categories = [
-            ("Herbal Soaps", "🧼", "Handcrafted organic soaps with natural oils"),
-            ("Face Pack Powders", "🌸", "Traditional herbal face pack powders"),
-            ("Organic Honey", "🍯", "100% Pure forest honey with superfoods"),
-            ("Hair Care", "💇", "Natural hair oils and care products"),
-            ("Serums & Oils", "✨", "Concentrated plant extracts and oils")
-        ]
-        for cat_name, icon, desc in categories:
-            c.execute("INSERT INTO categories (name, icon, description) VALUES (?, ?, ?)", 
-                     (cat_name, icon, desc))
-        
-        # Add subcategories for Soaps
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (1, "Charcoal & Neem Soaps", "Deep cleansing activated charcoal soaps"))
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (1, "Honey & Almond Soaps", "Moisturizing gentle soaps"))
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (1, "Turmeric Soaps", "Traditional turmeric and herb soaps"))
-        
-        # Add subcategories for Face Packs
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (2, "Turmeric & Sandalwood", "Traditional face packs for glow"))
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (2, "Neem & Basil Packs", "Acne-fighting herbal powders"))
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (2, "Clay & Herb Packs", "Detoxifying face packs"))
-        
-        # Add subcategories for Honey
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (3, "Raw Forest Honey", "Pure unprocessed honey"))
-        c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)",
-                 (3, "Infused Honey", "Honey with superfoods and herbs"))
-        
-        # Add sample products
-        sample_products = [
-            (1, "Yoshi Charcoal & Neem Deep Cleansing Soap", 
-             "Activated Bamboo Charcoal, Pure Neem Extract, Virgin Coconut Oil",
-             199.0, 149.0, "Handcrafted organic soap that deeply purifies and treats body acne.",
-             "Removes impurities, Treats acne, Moisturizes skin, Safe for all skin types",
-             "Handcrafted 🧼"),
-            (2, "Yoshi Nourishing Honey & Almond Goat Milk Soap",
-             "Raw Honey, Sweet Almond Oil, Organic Goat Milk",
-             220.0, 169.0, "Gentle and moisturizing soap, perfect for sensitive skin.",
-             "Gentle on sensitive skin, Deeply moisturizes, Safe for kids and elders",
-             "Made Safe Certified 🛡️"),
-            (3, "Yoshi Turmeric & Sandalwood Soap",
-             "Kasturi Manjal, Sandalwood, Natural Oils",
-             189.0, 139.0, "Traditional turmeric soap for radiant skin.",
-             "Brightens complexion, Reduces scars, Ancient recipe",
-             "Traditional 🌿"),
-            (4, "Yoshi Wild Turmeric & Sandalwood Face Pack Powder",
-             "Kasturi Manjal, Pure Sandalwood Bark, Multani Mitti",
-             349.0, 279.0, "Traditional herbal face pack for clear skin.",
-             "Clears blemishes, Controls oil, Restores glow, 100% Natural",
-             "Traditional Recipe 🌸"),
-            (5, "Yoshi Neem, Basil & Mint Acne Repair Face Pack",
-             "Sun-Dried Neem, Holy Basil, Fresh Mint",
-             299.0, 239.0, "Herbal powder to fight acne and detoxify.",
-             "Fights acne, Cools irritated skin, Detoxifies, Soothing",
-             "100% Natural 🍃"),
-            (7, "Yoshi Organic Raw Saffron Honey",
-             "100% Pure Forest Honey, Kashmiri Saffron Threads",
-             550.0, 480.0, "Directly from organic beehives with premium saffron.",
-             "Immunity booster, Pure forest honey, Natural sweetness, Energy enhancer",
-             "Best Seller 🍯"),
-        ]
-        
-        for subcat_id, title, ingredients, reg_price, sale_price, desc, benefits, badge in sample_products:
-            c.execute('''
-                INSERT INTO products (subcategory_id, title, ingredients, regular_price, sale_price, description, benefits, badge)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (subcat_id, title, ingredients, reg_price, sale_price, desc, benefits, badge))
+            INSERT INTO brand_settings (brand_name, tagline, logo_emoji, about_text)
+            VALUES (?, ?, ?, ?)
+        ''', ('OISHI', 'Purely Herbal, Purely Divine', '🌿', 
+              'Welcome to OISHI - where ancient herbal wisdom meets modern wellness. Every product is crafted with pure, organic ingredients.'))
     
     conn.commit()
     conn.close()
@@ -194,7 +94,7 @@ def init_db():
 init_db()
 
 # ═════════════════════════════════════════════════════════════════════════════
-# DATABASE HELPER FUNCTIONS
+# DATABASE FUNCTIONS
 # ═════════════════════════════════════════════════════════════════════════════
 
 def get_brand_settings():
@@ -209,122 +109,112 @@ def get_brand_settings():
             'tagline': row[2],
             'primary_color': row[3],
             'secondary_color': row[4],
-            'background_color': row[5],
-            'logo_text': row[6],
+            'accent_color': row[5],
+            'logo_emoji': row[6],
             'about_text': row[7]
         }
     return {}
 
-def update_brand_settings(brand_name, tagline, primary_color, secondary_color, background_color, logo_text, about_text):
+def update_brand_settings(brand_name, tagline, primary_color, secondary_color, accent_color, logo_emoji, about_text):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
         UPDATE brand_settings 
-        SET brand_name=?, tagline=?, primary_color=?, secondary_color=?, background_color=?, logo_text=?, about_text=?
+        SET brand_name=?, tagline=?, primary_color=?, secondary_color=?, accent_color=?, logo_emoji=?, about_text=?
         WHERE id = 1
-    ''', (brand_name, tagline, primary_color, secondary_color, background_color, logo_text, about_text))
+    ''', (brand_name, tagline, primary_color, secondary_color, accent_color, logo_emoji, about_text))
     conn.commit()
     conn.close()
 
 def get_categories():
     conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT id, name, icon, description FROM categories ORDER BY name", conn)
+    df = pd.read_sql_query("SELECT id, name, emoji, description FROM categories ORDER BY created_at DESC", conn)
     conn.close()
     return df
 
-def get_subcategories(category_id=None):
+def add_category(name, emoji, description):
     conn = sqlite3.connect(DB_FILE)
-    if category_id:
-        df = pd.read_sql_query(
-            "SELECT id, category_id, name, description FROM subcategories WHERE category_id = ? ORDER BY name",
-            conn, params=[category_id]
-        )
-    else:
-        df = pd.read_sql_query(
-            "SELECT id, category_id, name, description FROM subcategories ORDER BY name", conn
-        )
-    conn.close()
-    return df
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO categories (name, emoji, description) VALUES (?, ?, ?)", (name, emoji, description))
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        conn.close()
+        return False
 
-def get_products(category_id=None, subcategory_id=None, search_query=None):
+def update_category(cat_id, name, emoji, description):
     conn = sqlite3.connect(DB_FILE)
-    query = "SELECT p.id, p.subcategory_id, p.title, p.ingredients, p.regular_price, p.sale_price, p.rating, p.reviews_count, p.description, p.benefits, p.badge, s.name as subcategory_name, c.name as category_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id LEFT JOIN categories c ON s.category_id = c.id WHERE 1=1"
+    c = conn.cursor()
+    c.execute("UPDATE categories SET name=?, emoji=?, description=? WHERE id=?", (name, emoji, description, cat_id))
+    conn.commit()
+    conn.close()
+
+def delete_category(cat_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM products WHERE category_id=?", (cat_id,))
+    c.execute("DELETE FROM categories WHERE id=?", (cat_id,))
+    conn.commit()
+    conn.close()
+
+def get_products(category_id=None, search_query=None):
+    conn = sqlite3.connect(DB_FILE)
+    query = '''
+        SELECT p.id, p.category_id, p.name, p.description, p.ingredients, p.benefits, 
+               p.price, p.discount_price, p.rating, p.reviews, p.image_data, p.badge,
+               c.name as category_name, c.emoji as category_emoji
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE 1=1
+    '''
     params = []
     
     if category_id:
-        query += " AND c.id = ?"
+        query += " AND p.category_id = ?"
         params.append(category_id)
-    if subcategory_id:
-        query += " AND p.subcategory_id = ?"
-        params.append(subcategory_id)
     if search_query:
-        query += " AND (p.title LIKE ? OR p.ingredients LIKE ? OR p.description LIKE ? OR p.benefits LIKE ?)"
-        params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
+        query += " AND (p.name LIKE ? OR p.ingredients LIKE ? OR p.benefits LIKE ?)"
+        params.extend([f"%{search_query}%", f"%{search_query}%", f"%{search_query}%"])
     
-    df = pd.read_sql_query(query + " ORDER BY p.id DESC", conn, params=params)
+    query += " ORDER BY p.created_at DESC"
+    df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
 
-def get_product_images(product_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id, image_data, alt_text, is_primary FROM product_images WHERE product_id = ? ORDER BY is_primary DESC, id", (product_id,))
-    images = c.fetchall()
-    conn.close()
-    return images
-
-def add_product(subcategory_id, title, ingredients, reg_price, sale_price, description, benefits, badge):
+def add_product(category_id, name, description, ingredients, benefits, price, discount_price, badge, image_data):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO products (subcategory_id, title, ingredients, regular_price, sale_price, description, benefits, badge)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (subcategory_id, title, ingredients, reg_price, sale_price, description, benefits, badge))
-    product_id = c.lastrowid
-    conn.commit()
-    conn.close()
-    return product_id
-
-def add_product_image(product_id, image_bytes, alt_text="", is_primary=False):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO product_images (product_id, image_data, alt_text, is_primary)
-        VALUES (?, ?, ?, ?)
-    ''', (product_id, image_bytes, alt_text, is_primary))
+        INSERT INTO products (category_id, name, description, ingredients, benefits, price, discount_price, badge, image_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (category_id, name, description, ingredients, benefits, price, discount_price, badge, image_data))
     conn.commit()
     conn.close()
 
-def update_product(product_id, title, ingredients, reg_price, sale_price, description, benefits, badge):
+def update_product(prod_id, name, description, ingredients, benefits, price, discount_price, badge, image_data):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('''
-        UPDATE products 
-        SET title=?, ingredients=?, regular_price=?, sale_price=?, description=?, benefits=?, badge=?
-        WHERE id=?
-    ''', (title, ingredients, reg_price, sale_price, description, benefits, badge, product_id))
+    if image_data:
+        c.execute('''
+            UPDATE products 
+            SET name=?, description=?, ingredients=?, benefits=?, price=?, discount_price=?, badge=?, image_data=?
+            WHERE id=?
+        ''', (name, description, ingredients, benefits, price, discount_price, badge, image_data, prod_id))
+    else:
+        c.execute('''
+            UPDATE products 
+            SET name=?, description=?, ingredients=?, benefits=?, price=?, discount_price=?, badge=?
+            WHERE id=?
+        ''', (name, description, ingredients, benefits, price, discount_price, badge, prod_id))
     conn.commit()
     conn.close()
 
-def delete_product(product_id):
+def delete_product(prod_id):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("DELETE FROM product_images WHERE product_id=?", (product_id,))
-    c.execute("DELETE FROM products WHERE id=?", (product_id,))
-    conn.commit()
-    conn.close()
-
-def add_category(name, icon, description):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("INSERT INTO categories (name, icon, description) VALUES (?, ?, ?)", (name, icon, description))
-    conn.commit()
-    conn.close()
-
-def add_subcategory(category_id, name, description):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("INSERT INTO subcategories (category_id, name, description) VALUES (?, ?, ?)", (name, description, category_id))
+    c.execute("DELETE FROM products WHERE id=?", (prod_id,))
     conn.commit()
     conn.close()
 
@@ -334,7 +224,7 @@ def save_order(name, email, phone, address, city, pincode, items_summary, total_
     c.execute('''
         INSERT INTO orders (customer_name, customer_email, customer_phone, address, city, pincode, items_summary, total_amount, payment_method, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (name, email, phone, address, city, pincode, items_summary, total_amount, payment_method, "Order Confirmed ✅"))
+    ''', (name, email, phone, address, city, pincode, items_summary, total_amount, payment_method, "Confirmed ✅"))
     order_id = c.lastrowid
     conn.commit()
     conn.close()
@@ -358,17 +248,16 @@ def update_order_status(order_id, status):
 # ═════════════════════════════════════════════════════════════════════════════
 
 st.set_page_config(
-    page_title="Yoshi - Premium Organic Wellness",
+    page_title="OISHI - Purely Herbal",
     page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Get brand settings
 brand = get_brand_settings()
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PREMIUM CSS STYLING
+# PREMIUM CSS - OPTIMIZED DESIGN
 # ═════════════════════════════════════════════════════════════════════════════
 
 st.markdown(f"""
@@ -376,11 +265,11 @@ st.markdown(f"""
     :root {{
         --primary: {brand['primary_color']};
         --secondary: {brand['secondary_color']};
-        --bg: {brand['background_color']};
+        --accent: {brand['accent_color']};
         --text-dark: #1a1a1a;
-        --text-light: #6b6b6b;
-        --border: #e8e4dc;
-        --success: #2e7d32;
+        --text-light: #666666;
+        --border: #e5e5e5;
+        --success: #27ae60;
     }}
     
     * {{
@@ -390,150 +279,235 @@ st.markdown(f"""
     }}
     
     html, body {{
-        background-color: var(--bg);
+        background-color: #ffffff;
         color: var(--text-dark);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
         line-height: 1.6;
     }}
     
-    /* TYPOGRAPHY */
-    h1, h2, h3, h4, h5, h6 {{
-        font-family: 'Georgia', 'Garamond', serif;
-        color: var(--primary);
-        font-weight: 700;
-        letter-spacing: -0.5px;
-    }}
+    /* ===== TYPOGRAPHY ===== */
+    h1 {{ font-size: 3rem; font-weight: 800; color: var(--primary); letter-spacing: -1px; margin-bottom: 10px; }}
+    h2 {{ font-size: 2rem; font-weight: 700; color: var(--primary); margin: 30px 0 15px 0; }}
+    h3 {{ font-size: 1.4rem; font-weight: 600; color: var(--primary); margin: 20px 0 10px 0; }}
+    h4 {{ font-size: 1.1rem; font-weight: 600; color: var(--text-dark); }}
+    p {{ color: var(--text-light); line-height: 1.8; }}
     
-    h1 {{ font-size: 3.5rem; line-height: 1.2; }}
-    h2 {{ font-size: 2.2rem; margin: 1.5rem 0 1rem 0; }}
-    h3 {{ font-size: 1.5rem; margin: 1rem 0 0.8rem 0; }}
-    h4 {{ font-size: 1.25rem; }}
-    
-    p {{ color: var(--text-light); margin-bottom: 0.8rem; }}
-    
-    /* PREMIUM HERO BANNER */
-    .hero-banner {{
-        background: linear-gradient(135deg, var(--primary) 0%, #{hex(int(brand['primary_color'][1:], 16) - 0x111111)[2:].zfill(6)} 100%);
+    /* ===== HERO SECTION ===== */
+    .hero {{
+        background: linear-gradient(135deg, var(--primary) 0%, #1f3a0f 100%);
         color: white;
-        padding: 60px 40px;
-        border-radius: 20px;
+        padding: 80px 40px;
+        border-radius: 0;
         text-align: center;
-        margin-bottom: 50px;
-        box-shadow: 0 20px 60px rgba(27, 60, 34, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 60px;
+        box-shadow: 0 10px 40px rgba(45, 80, 22, 0.15);
         position: relative;
         overflow: hidden;
     }}
     
-    .hero-banner::before {{
+    .hero::before {{
         content: '';
         position: absolute;
         top: -50%;
         right: -50%;
-        width: 500px;
-        height: 500px;
-        background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
         border-radius: 50%;
     }}
     
+    .hero-content {{
+        position: relative;
+        z-index: 2;
+    }}
+    
     .hero-logo {{
-        font-size: 4rem;
+        font-size: 4.5rem;
+        margin-bottom: 20px;
+        text-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }}
+    
+    .hero-title {{
+        font-size: 3rem;
         font-weight: 800;
-        margin-bottom: 15px;
-        text-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        letter-spacing: 1px;
+        margin-bottom: 10px;
+        letter-spacing: -1px;
     }}
     
     .hero-tagline {{
-        font-size: 1.35rem;
-        color: rgba(255, 255, 255, 0.95);
+        font-size: 1.4rem;
         font-weight: 300;
-        margin-bottom: 10px;
+        color: rgba(255, 255, 255, 0.95);
+        margin-bottom: 0;
     }}
     
-    /* PRODUCT CARDS */
+    /* ===== CATEGORY PILLS ===== */
+    .category-container {{
+        display: flex;
+        gap: 15px;
+        overflow-x: auto;
+        padding: 30px 0;
+        margin-bottom: 40px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }}
+    
+    .category-pill {{
+        background: white;
+        border: 2px solid var(--border);
+        color: var(--text-dark);
+        padding: 12px 24px;
+        border-radius: 50px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }}
+    
+    .category-pill:hover {{
+        border-color: var(--primary);
+        background: var(--accent);
+        color: var(--primary);
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(45, 80, 22, 0.1);
+    }}
+    
+    .category-pill.active {{
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+    }}
+    
+    /* ===== SEARCH BAR ===== */
+    .search-container {{
+        margin-bottom: 50px;
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+    }}
+    
+    .search-box {{
+        background: white;
+        border: 2px solid var(--border);
+        border-radius: 50px;
+        padding: 15px 25px;
+        width: 100%;
+        max-width: 500px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }}
+    
+    .search-box:focus {{
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(45, 80, 22, 0.1);
+    }}
+    
+    /* ===== PRODUCT GRID ===== */
+    .products-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 35px;
+        margin-bottom: 60px;
+    }}
+    
+    /* ===== PRODUCT CARD - PREMIUM DESIGN ===== */
     .product-card {{
         background: white;
         border-radius: 16px;
-        border: 1px solid var(--border);
         overflow: hidden;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid var(--border);
         display: flex;
         flex-direction: column;
         height: 100%;
     }}
     
     .product-card:hover {{
-        transform: translateY(-8px);
-        box-shadow: 0 12px 35px rgba(27, 60, 34, 0.12);
+        transform: translateY(-12px);
+        box-shadow: 0 15px 40px rgba(45, 80, 22, 0.15);
         border-color: var(--primary);
     }}
     
-    .product-image-container {{
-        position: relative;
+    .product-image {{
         width: 100%;
-        height: 300px;
-        background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+        height: 280px;
+        background: linear-gradient(135deg, #f5f0e8 0%, #ede8e0 100%);
         overflow: hidden;
+        position: relative;
+    }}
+    
+    .product-image img {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.4s ease;
+    }}
+    
+    .product-card:hover .product-image img {{
+        transform: scale(1.05);
     }}
     
     .product-badge {{
         position: absolute;
-        top: 12px;
-        right: 12px;
-        background: linear-gradient(135deg, var(--secondary) 0%, #{hex(int(brand['secondary_color'][1:], 16) - 0x222222)[2:].zfill(6)} 100%);
+        top: 15px;
+        right: 15px;
+        background: linear-gradient(135deg, var(--secondary) 0%, #d4a537 100%);
         color: var(--primary);
-        padding: 6px 12px;
+        padding: 8px 16px;
         border-radius: 50px;
         font-size: 0.75rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        letter-spacing: 1px;
+        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.25);
     }}
     
-    .product-info {{
-        padding: 20px;
+    .product-content {{
+        padding: 25px;
         flex-grow: 1;
         display: flex;
         flex-direction: column;
     }}
     
-    .product-title {{
-        font-size: 1.1rem;
+    .product-name {{
+        font-size: 1.15rem;
         font-weight: 700;
-        margin-bottom: 8px;
         color: var(--text-dark);
+        margin-bottom: 8px;
         line-height: 1.4;
     }}
     
     .product-ingredients {{
         font-size: 0.85rem;
         color: var(--text-light);
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         font-style: italic;
     }}
     
     .product-rating {{
         font-size: 0.9rem;
-        margin-bottom: 10px;
+        color: var(--text-light);
+        margin-bottom: 15px;
     }}
     
     .product-benefits {{
-        font-size: 0.85rem;
+        font-size: 0.9rem;
         color: var(--text-light);
-        margin-bottom: 12px;
+        margin-bottom: 15px;
         flex-grow: 1;
+        line-height: 1.6;
     }}
     
-    .price-section {{
+    .product-price {{
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin: 15px 0;
-        border-top: 1px solid var(--border);
+        gap: 12px;
+        margin-bottom: 20px;
         padding-top: 15px;
+        border-top: 1px solid var(--border);
     }}
     
     .price-original {{
@@ -543,23 +517,23 @@ st.markdown(f"""
     }}
     
     .price-current {{
-        font-size: 1.5rem;
-        font-weight: 700;
+        font-size: 1.6rem;
+        font-weight: 800;
         color: var(--primary);
     }}
     
-    .discount-badge {{
+    .discount-tag {{
         background: #fff3cd;
-        color: #856404;
-        padding: 3px 8px;
+        color: #b8860b;
+        padding: 4px 10px;
         border-radius: 6px;
         font-size: 0.8rem;
         font-weight: 600;
     }}
     
-    /* BUTTONS */
+    /* ===== BUTTONS ===== */
     .stButton>button {{
-        background: linear-gradient(135deg, var(--primary) 0%, #{hex(int(brand['primary_color'][1:], 16) - 0x111111)[2:].zfill(6)} 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #1f3a0f 100%);
         color: white !important;
         border: none !important;
         border-radius: 10px !important;
@@ -568,48 +542,88 @@ st.markdown(f"""
         font-weight: 600 !important;
         cursor: pointer;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(27, 60, 34, 0.2) !important;
+        box-shadow: 0 4px 15px rgba(45, 80, 22, 0.2) !important;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        width: 100%;
     }}
     
     .stButton>button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(27, 60, 34, 0.3) !important;
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(45, 80, 22, 0.35) !important;
     }}
     
-    /* SIDEBAR */
-    .sidebar {{
-        background: linear-gradient(180deg, var(--primary) 0%, #{hex(int(brand['primary_color'][1:], 16) - 0x222222)[2:].zfill(6)} 100%);
+    /* ===== EMPTY STATE ===== */
+    .empty-state {{
+        text-align: center;
+        padding: 80px 40px;
+        background: var(--accent);
+        border-radius: 16px;
+        border: 2px dashed var(--border);
     }}
     
-    [data-testid="stSidebarNav"] {{
-        background: var(--primary);
-        color: white;
+    .empty-state-icon {{
+        font-size: 4rem;
+        margin-bottom: 20px;
     }}
     
-    /* DIVIDERS */
-    .fancy-divider {{
-        height: 3px;
+    .empty-state h3 {{
+        margin-bottom: 10px;
+    }}
+    
+    /* ===== SIDEBAR ===== */
+    [data-testid="stSidebar"] {{
+        background: linear-gradient(180deg, var(--primary) 0%, #1f3a0f 100%);
+    }}
+    
+    /* ===== DIVIDER ===== */
+    .divider {{
+        height: 2px;
         background: linear-gradient(90deg, transparent 0%, var(--primary) 50%, transparent 100%);
-        margin: 30px 0;
-        border-radius: 2px;
+        margin: 40px 0;
+        border-radius: 1px;
     }}
     
-    /* CONTAINERS */
-    .container {{
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 0 15px;
+    /* ===== FORMS ===== */
+    .stTextInput>div>div>input,
+    .stSelectbox>div>div>select,
+    .stTextArea>div>div>textarea {{
+        border-radius: 8px !important;
+        border: 1px solid var(--border) !important;
+        padding: 12px !important;
     }}
     
-    /* INFO CARDS */
-    .info-box {{
-        background: linear-gradient(135deg, rgba(247, 203, 101, 0.1) 0%, rgba(27, 60, 34, 0.05) 100%);
-        border: 1px solid var(--secondary);
-        border-radius: 12px;
+    /* ===== TABS ===== */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 20px;
+        border-bottom: 2px solid var(--border) !important;
+    }}
+    
+    .stTabs [role="tab"] {{
+        font-weight: 600;
+        color: var(--text-light);
+        border: none !important;
+        border-bottom: 3px solid transparent !important;
+        padding: 15px 0 !important;
+    }}
+    
+    .stTabs [role="tab"][aria-selected="true"] {{
+        color: var(--primary) !important;
+        border-bottom: 3px solid var(--primary) !important;
+    }}
+    
+    /* ===== NO PADDING ===== */
+    .block-container {{
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }}
+    
+    /* ===== METRICS ===== */
+    .metric {{
+        background: var(--accent);
         padding: 20px;
-        margin: 20px 0;
+        border-radius: 12px;
+        border: 1px solid var(--border);
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -619,17 +633,19 @@ st.markdown(f"""
 # ═════════════════════════════════════════════════════════════════════════════
 
 if "cart" not in st.session_state:
-    st.session_state.cart = {}  # {product_id: {'title': '', 'price': 0, 'qty': 0}}
-if "current_page" not in st.session_state:
-    st.session_state.current_page = "Shop"
+    st.session_state.cart = {}
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SIDEBAR NAVIGATION
 # ═════════════════════════════════════════════════════════════════════════════
 
-st.sidebar.markdown(f"# {brand['logo_text']}")
-st.sidebar.markdown(f"*{brand['tagline']}*")
-st.sidebar.markdown("---")
+st.sidebar.markdown(f"""
+<div style="text-align: center; padding: 20px 0; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
+    <div style="font-size: 3rem; margin-bottom: 10px;">{brand['logo_emoji']}</div>
+    <h2 style="color: white; margin: 0; font-size: 1.3rem;">{brand['brand_name']}</h2>
+    <p style="color: rgba(255,255,255,0.8); margin: 5px 0 0 0; font-size: 0.9rem;">{brand['tagline']}</p>
+</div>
+""", unsafe_allow_html=True)
 
 pages = {
     "🛍️ Shop": "shop",
@@ -639,252 +655,261 @@ pages = {
     "⚙️ Admin": "admin"
 }
 
-selected_page = st.sidebar.radio("Navigate:", list(pages.keys()))
+selected_page = st.sidebar.radio("Navigate:", list(pages.keys()), label_visibility="collapsed")
 current_page = pages[selected_page]
 
 cart_count = sum(item["qty"] for item in st.session_state.cart.values())
 st.sidebar.markdown("---")
-st.sidebar.metric("🛒 Items in Cart", cart_count)
+if cart_count > 0:
+    st.sidebar.metric("🛒 Cart Items", cart_count)
+else:
+    st.sidebar.markdown("<p style='text-align: center; color: #999;'>🛒 Cart Empty</p>", unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: SHOP
 # ═════════════════════════════════════════════════════════════════════════════
 
 if current_page == "shop":
-    # Hero Banner
+    # HERO SECTION
     st.markdown(f"""
-    <div class="hero-banner">
-        <div class="hero-logo">{brand['logo_text']}</div>
-        <div class="hero-tagline">{brand['tagline']}</div>
-        <p style="margin-top: 15px; font-size: 0.95rem; color: rgba(255,255,255,0.9);">Discover the purity of nature in every product</p>
+    <div class="hero">
+        <div class="hero-content">
+            <div class="hero-logo">{brand['logo_emoji']}</div>
+            <div class="hero-title">{brand['brand_name']}</div>
+            <div class="hero-tagline">{brand['tagline']}</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Search & Filter
-    col1, col2 = st.columns([2, 3])
-    with col1:
-        categories_df = get_categories()
-        selected_category = st.selectbox(
-            "📂 Browse Category",
-            ["All Products"] + categories_df['name'].tolist(),
-            key="category_select"
-        )
-    with col2:
-        search_term = st.text_input(
-            "🔍 Search products",
-            placeholder="Search by name, ingredients, or benefits..."
-        )
+    # GET CATEGORIES
+    categories_df = get_categories()
     
-    st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
-    
-    # Get products
-    category_id = None
-    if selected_category != "All Products":
-        category_id = categories_df[categories_df['name'] == selected_category]['id'].values[0]
-    
-    products_df = get_products(category_id=category_id, search_query=search_term if search_term else None)
-    
-    if products_df.empty:
-        st.info("✨ No products found. Try a different search or browse all categories!")
+    if categories_df.empty:
+        # EMPTY STATE
+        st.markdown("""
+        <div class="empty-state">
+            <div class="empty-state-icon">📂</div>
+            <h3>No Categories Yet</h3>
+            <p>Visit the Admin section to create categories and add your first products!</p>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        # Display products in a responsive grid
-        cols = st.columns(3)
-        for idx, (_, product) in enumerate(products_df.iterrows()):
-            col = cols[idx % 3]
+        # CATEGORY FILTER
+        col_cats = st.columns([10, 1])
+        
+        with col_cats[0]:
+            st.markdown("### Explore Our Collections")
+            cat_list = ["All Products"] + categories_df['name'].tolist()
             
-            with col:
-                # Product Card
-                product_images = get_product_images(product['id'])
+            st.markdown('<div class="category-container">', unsafe_allow_html=True)
+            
+            cat_col = st.columns(len(cat_list))
+            selected_category = None
+            
+            for idx, cat in enumerate(cat_list):
+                with cat_col[idx]:
+                    if st.button(cat, key=f"cat_{idx}", use_container_width=True):
+                        st.session_state.selected_cat = cat
+            
+            if "selected_cat" in st.session_state:
+                selected_category = st.session_state.selected_cat
+            else:
+                selected_category = "All Products"
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # SEARCH BAR
+        st.markdown('<div class="search-container">', unsafe_allow_html=True)
+        search_term = st.text_input("🔍 Search products", placeholder="Search by name, ingredients, benefits...", label_visibility="collapsed")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # GET PRODUCTS
+        category_id = None
+        if selected_category != "All Products":
+            category_id = categories_df[categories_df['name'] == selected_category]['id'].values[0]
+        
+        products_df = get_products(category_id=category_id, search_query=search_term if search_term else None)
+        
+        # DISPLAY PRODUCTS
+        if products_df.empty:
+            st.markdown("""
+            <div class="empty-state">
+                <div class="empty-state-icon">🌿</div>
+                <h3>No Products Found</h3>
+                <p>Try adjusting your search or browse other categories.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # PRODUCT GRID
+            st.markdown('<div class="products-grid">', unsafe_allow_html=True)
+            
+            for idx, (_, product) in enumerate(products_df.iterrows()):
+                col = st.columns(3)[(idx % 3)]
                 
-                st.markdown(f"""
-                <div class="product-card">
-                    <div class="product-image-container">
-                """, unsafe_allow_html=True)
-                
-                # Display primary image or placeholder
-                if product_images:
-                    try:
-                        img = Image.open(io.BytesIO(product_images[0][1]))
-                        st.image(img, use_container_width=True)
-                    except:
-                        st.image("https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60", use_container_width=True)
-                else:
-                    if "Soap" in product.get('category_name', ''):
-                        st.image("https://images.unsplash.com/photo-1607006342411-91f11c888ba1?w=500&auto=format&fit=crop&q=60", use_container_width=True)
-                    elif "Honey" in product.get('category_name', ''):
-                        st.image("https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=500&auto=format&fit=crop&q=60", use_container_width=True)
-                    elif "Face" in product.get('category_name', ''):
-                        st.image("https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60", use_container_width=True)
+                with col:
+                    # PRODUCT CARD
+                    st.markdown('<div class="product-card">', unsafe_allow_html=True)
+                    
+                    # IMAGE
+                    st.markdown('<div class="product-image">', unsafe_allow_html=True)
+                    if product['image_data']:
+                        try:
+                            img = Image.open(io.BytesIO(product['image_data']))
+                            st.image(img, use_container_width=True)
+                        except:
+                            st.image("https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60", use_container_width=True)
                     else:
-                        st.image("https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=500&auto=format&fit=crop&q=60", use_container_width=True)
-                
-                # Badge
-                if product['badge']:
-                    st.markdown(f'<span class="product-badge">{product["badge"]}</span>', unsafe_allow_html=True)
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Product Info
-                st.markdown(f"""
-                <div class="product-info">
-                    <div class="product-title">{product['title']}</div>
-                    <div class="product-ingredients">🌿 {product['ingredients']}</div>
-                    <div class="product-rating">⭐ {product['rating']} ({int(product['reviews_count'])} reviews)</div>
-                """, unsafe_allow_html=True)
-                
-                if product['benefits']:
-                    st.markdown(f'<div class="product-benefits">{product["benefits"]}</div>', unsafe_allow_html=True)
-                
-                # Pricing
-                discount = 0
-                if product['sale_price'] and product['regular_price'] > product['sale_price']:
-                    discount = int(((product['regular_price'] - product['sale_price']) / product['regular_price']) * 100)
-                
-                st.markdown(f"""
-                <div class="price-section">
-                    <span class="price-original">₹{int(product['regular_price'])}</span>
-                    <span class="price-current">₹{int(product['sale_price'])}</span>
-                    {f'<span class="discount-badge">{discount}% OFF</span>' if discount > 0 else ''}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Add to Cart Button
-                if st.button(f"🛒 Add to Cart", key=f"add_{product['id']}", use_container_width=True):
-                    pid = str(product['id'])
-                    if pid in st.session_state.cart:
-                        st.session_state.cart[pid]["qty"] += 1
-                    else:
-                        st.session_state.cart[pid] = {
-                            "title": product['title'],
-                            "price": product['sale_price'],
-                            "qty": 1
-                        }
-                    st.success(f"✅ Added to cart!")
-                    st.rerun()
-                
-                # Image Gallery Toggle
-                if len(product_images) > 1:
-                    with st.expander(f"📸 View {len(product_images)} photos"):
-                        gallery_cols = st.columns(2)
-                        for img_idx, (img_id, img_data, alt_text, is_primary) in enumerate(product_images):
-                            try:
-                                img = Image.open(io.BytesIO(img_data))
-                                gallery_cols[img_idx % 2].image(img, use_container_width=True, caption=alt_text or f"Photo {img_idx + 1}")
-                            except:
-                                pass
-                
-                st.markdown('</div>', unsafe_allow_html=True)
+                        st.image("https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60", use_container_width=True)
+                    
+                    # BADGE
+                    if product['badge']:
+                        st.markdown(f'<span class="product-badge">{product["badge"]}</span>', unsafe_allow_html=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # CONTENT
+                    st.markdown('<div class="product-content">', unsafe_allow_html=True)
+                    
+                    st.markdown(f'<div class="product-name">{product["name"]}</div>', unsafe_allow_html=True)
+                    
+                    if product['ingredients']:
+                        st.markdown(f'<div class="product-ingredients">🌿 {product["ingredients"]}</div>', unsafe_allow_html=True)
+                    
+                    st.markdown(f'<div class="product-rating">⭐ {product["rating"]} ({int(product["reviews"])} reviews)</div>', unsafe_allow_html=True)
+                    
+                    if product['benefits']:
+                        st.markdown(f'<div class="product-benefits">{product["benefits"]}</div>', unsafe_allow_html=True)
+                    
+                    # PRICING
+                    discount = 0
+                    if product['discount_price'] and product['price'] > product['discount_price']:
+                        discount = int(((product['price'] - product['discount_price']) / product['price']) * 100)
+                    
+                    st.markdown(f"""
+                    <div class="product-price">
+                        <span class="price-original">₹{int(product['price'])}</span>
+                        <span class="price-current">₹{int(product['discount_price']) if product['discount_price'] else int(product['price'])}</span>
+                        {f'<span class="discount-tag">{discount}% OFF</span>' if discount > 0 else ''}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # ADD TO CART
+                    if st.button(f"🛒 Add to Cart", key=f"add_{product['id']}", use_container_width=True):
+                        pid = str(product['id'])
+                        if pid in st.session_state.cart:
+                            st.session_state.cart[pid]["qty"] += 1
+                        else:
+                            st.session_state.cart[pid] = {
+                                "name": product['name'],
+                                "price": product['discount_price'] if product['discount_price'] else product['price'],
+                                "qty": 1
+                            }
+                        st.success(f"✅ Added to cart!")
+                        st.rerun()
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PAGE: SHOPPING CART & CHECKOUT
+# PAGE: CART & CHECKOUT
 # ═════════════════════════════════════════════════════════════════════════════
 
 elif current_page == "cart":
-    st.markdown("## 🛒 Shopping Cart & Checkout")
+    st.markdown("## 🛒 Shopping Cart")
     
     if not st.session_state.cart:
-        st.info("Your cart is empty. Let's fill it with some amazing organic goodness! ✨")
-        if st.button("← Continue Shopping"):
-            st.session_state.current_page = "shop"
-            st.rerun()
+        st.info("Your cart is empty. Let's add some amazing products! ✨")
     else:
-        # Cart Items
+        # CART ITEMS
         cart_items = []
         subtotal = 0
         
-        for pid, item in st.session_state.cart.items():
+        for pid, item in list(st.session_state.cart.items()):
             item_total = item['price'] * item['qty']
             subtotal += item_total
             cart_items.append({
-                "Product": item['title'],
+                "Product": item['name'],
                 "Price": f"₹{int(item['price'])}",
                 "Qty": item['qty'],
-                "Subtotal": f"₹{int(item_total)}",
+                "Total": f"₹{int(item_total)}",
                 "pid": pid
             })
         
-        # Display cart table
         cart_df = pd.DataFrame(cart_items)
-        st.dataframe(cart_df[["Product", "Price", "Qty", "Subtotal"]], use_container_width=True)
+        st.dataframe(cart_df[["Product", "Price", "Qty", "Total"]], use_container_width=True, hide_index=True)
         
-        # Manage cart
+        # CART ACTIONS
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🗑️ Clear Cart"):
+            if st.button("🗑️ Clear Cart", use_container_width=True):
                 st.session_state.cart = {}
                 st.success("Cart cleared!")
                 st.rerun()
         with col2:
-            if st.button("← Continue Shopping"):
-                st.session_state.current_page = "shop"
-                st.rerun()
+            if st.button("← Continue Shopping", use_container_width=True):
+                st.switch_page("pages/shop.py") if False else None
         
-        st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
         
-        # Pricing Summary
-        shipping_fee = 0 if subtotal >= 399 else 49
-        final_total = subtotal + shipping_fee
+        # PRICING
+        shipping = 0 if subtotal >= 399 else 49
+        total = subtotal + shipping
         
         col1, col2, col3 = st.columns(3)
         col1.metric("Subtotal", f"₹{int(subtotal)}")
-        col2.metric("Shipping", f"₹{int(shipping_fee)}")
-        col3.metric("Total", f"₹{int(final_total)}")
+        col2.metric("Shipping", f"₹{int(shipping)}")
+        col3.metric("Total", f"₹{int(total)}")
         
-        if shipping_fee > 0:
-            st.info(f"💡 Add ₹{int(399 - subtotal)} more for **FREE Delivery**!")
+        if shipping > 0:
+            st.info(f"💡 Add ₹{int(399 - subtotal)} more for FREE Delivery!")
         else:
-            st.success("🎉 **FREE Delivery** - You qualify!")
+            st.success("🎉 FREE Delivery Qualified!")
         
-        st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
         
-        # Checkout Form
-        st.markdown("### 📦 Delivery & Payment Details")
+        # CHECKOUT FORM
+        st.markdown("### 📦 Delivery & Payment")
         with st.form("checkout_form"):
             col1, col2 = st.columns(2)
             with col1:
-                name = st.text_input("Full Name *", placeholder="Your name")
-                email = st.text_input("Email Address *", placeholder="your@email.com")
+                name = st.text_input("Full Name *")
+                email = st.text_input("Email *")
             with col2:
-                phone = st.text_input("Mobile Number *", placeholder="+91 XXXXXXXXXX")
-                city = st.text_input("City *", placeholder="Your city")
+                phone = st.text_input("Phone *")
+                city = st.text_input("City *")
             
-            address = st.text_area("Complete Address *", placeholder="House no., street, locality...")
-            pincode = st.text_input("Pincode *", placeholder="6-digit pincode")
+            address = st.text_area("Address *", height=80)
+            pincode = st.text_input("Pincode *")
+            payment = st.selectbox("Payment Method", ["💳 Card", "📱 UPI", "💵 Cash on Delivery"])
             
-            payment = st.selectbox(
-                "Payment Method",
-                ["💳 Credit/Debit Card", "📱 UPI (Google Pay/PhonePe)", "💵 Cash on Delivery"]
-            )
-            
-            submit = st.form_submit_button("🚀 Place Order", use_container_width=True)
-            
-            if submit:
-                if not all([name, email, phone, address, city, pincode]):
-                    st.error("Please fill in all required fields!")
-                else:
-                    items_str = ", ".join([f"{item['title']} (x{item['qty']})" for item in st.session_state.cart.values()])
-                    order_id = save_order(name, email, phone, address, city, pincode, items_str, final_total, payment)
+            if st.form_submit_button("🚀 Place Order", use_container_width=True):
+                if all([name, email, phone, address, city, pincode]):
+                    items_str = ", ".join([f"{item['name']} (x{item['qty']})" for item in st.session_state.cart.values()])
+                    order_id = save_order(name, email, phone, address, city, pincode, items_str, total, payment)
                     st.balloons()
-                    st.success(f"✅ Order #YS-{order_id:04d} confirmed!")
-                    st.info("📧 Confirmation sent to your email. Track your order in the Orders section!")
+                    st.success(f"✅ Order Confirmed! Order ID: #OISHI-{order_id:04d}")
                     st.session_state.cart = {}
-                    st.rerun()
+                else:
+                    st.error("Please fill all required fields!")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: ORDERS
 # ═════════════════════════════════════════════════════════════════════════════
 
 elif current_page == "orders":
-    st.markdown("## 📦 Order Tracking & History")
+    st.markdown("## 📦 Your Orders")
     
     orders_df = get_orders()
     
     if orders_df.empty:
-        st.info("No orders yet. Start shopping to see your order history here!")
+        st.info("No orders yet. Start shopping!")
     else:
         for _, order in orders_df.iterrows():
-            with st.expander(f"Order #YS-{order['id']:04d} - {order['customer_name']} - {order['order_date'][:10]}", expanded=False):
-                col1, col2, col3 = st.columns([2, 2, 1])
+            with st.expander(f"Order #OISHI-{order['id']:04d} - {order['order_date'][:10]}", expanded=False):
+                col1, col2, col3 = st.columns(3)
                 col1.markdown(f"**Status:** {order['status']}")
                 col2.markdown(f"**Amount:** ₹{int(order['total_amount'])}")
                 col3.markdown(f"**Payment:** {order['payment_method']}")
@@ -892,7 +917,7 @@ elif current_page == "orders":
                 st.markdown(f"""
                 **Items:** {order['items_summary']}
                 
-                **Delivery Address:** {order['address']}, {order['city']} - {order['pincode']}
+                **Address:** {order['address']}, {order['city']} - {order['pincode']}
                 
                 **Contact:** {order['customer_email']} | {order['customer_phone']}
                 """)
@@ -907,155 +932,187 @@ elif current_page == "about":
         st.image("https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=500&auto=format&fit=crop&q=60", use_container_width=True)
     with col2:
         st.markdown(f"""
-        ## 🌿 About {brand['brand_name']}
+        ## About {brand['brand_name']}
         
-        ### Our Mission
         {brand['about_text']}
         
-        ### Why Choose Us?
-        - **100% Natural Ingredients** - No chemicals, no compromises
-        - **Handcrafted with Love** - Each product made with care
-        - **Sustainably Sourced** - Supporting local communities
-        - **Trusted by Thousands** - 4.8+ star ratings
-        - **Money-Back Guarantee** - Your satisfaction is our priority
+        ### Our Promise
+        - 🌿 100% Pure & Organic
+        - 🧪 No Harmful Chemicals
+        - ⭐ Premium Quality
+        - 💚 Sustainable
         """)
-    
-    st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
-    
-    st.markdown("### 🌟 Why Our Customers Love Us")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Happy Customers", "10K+")
-    col2.metric("Products", "50+")
-    col3.metric("Repeat Orders", "85%")
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PAGE: ADMIN DASHBOARD
+# PAGE: ADMIN
 # ═════════════════════════════════════════════════════════════════════════════
 
 elif current_page == "admin":
     st.markdown("## ⚙️ Admin Dashboard")
     
-    admin_tabs = st.tabs(["🎨 Brand Settings", "📂 Categories", "🛍️ Products", "📦 Orders", "🔍 Analytics"])
+    admin_tabs = st.tabs(["🎨 Branding", "📂 Categories", "🛍️ Products", "📦 Orders"])
     
-    # TAB 1: Brand Settings
+    # TAB 1: BRANDING
     with admin_tabs[0]:
-        st.markdown("### Customize Your Store Branding")
-        with st.form("brand_settings_form"):
+        st.markdown("### Customize Your Brand")
+        with st.form("brand_form"):
             col1, col2 = st.columns(2)
             with col1:
                 brand_name = st.text_input("Brand Name", value=brand['brand_name'])
                 tagline = st.text_input("Tagline", value=brand['tagline'])
-                logo_text = st.text_input("Logo Text (with emojis)", value=brand['logo_text'])
+                logo_emoji = st.text_input("Logo Emoji", value=brand['logo_emoji'])
                 primary_color = st.color_picker("Primary Color", value=brand['primary_color'])
             with col2:
-                secondary_color = st.color_picker("Secondary Color (Accent)", value=brand['secondary_color'])
-                background_color = st.color_picker("Background Color", value=brand['background_color'])
+                secondary_color = st.color_picker("Secondary Color", value=brand['secondary_color'])
+                accent_color = st.color_picker("Accent Color", value=brand['accent_color'])
                 about_text = st.text_area("About Text", value=brand['about_text'], height=100)
             
-            if st.form_submit_button("💾 Save Brand Settings"):
-                update_brand_settings(brand_name, tagline, primary_color, secondary_color, background_color, logo_text, about_text)
-                st.success("✅ Brand settings updated!")
+            if st.form_submit_button("💾 Save Settings"):
+                update_brand_settings(brand_name, tagline, primary_color, secondary_color, accent_color, logo_emoji, about_text)
+                st.success("✅ Brand updated!")
                 st.rerun()
     
-    # TAB 2: Categories Management
+    # TAB 2: CATEGORIES
     with admin_tabs[1]:
-        st.markdown("### Manage Categories & Subcategories")
+        st.markdown("### Manage Categories")
         
-        subtab1, subtab2 = st.tabs(["View Categories", "Add New"])
+        subtab1, subtab2 = st.tabs(["View", "Add", "Edit/Delete"])
         
         with subtab1:
-            categories_df = get_categories()
-            st.dataframe(categories_df, use_container_width=True)
+            cats = get_categories()
+            if cats.empty:
+                st.info("No categories yet. Create one!")
+            else:
+                st.dataframe(cats, use_container_width=True, hide_index=True)
         
         with subtab2:
-            with st.form("add_category_form"):
+            with st.form("add_cat_form"):
                 cat_name = st.text_input("Category Name *")
-                cat_icon = st.text_input("Icon (emoji)", value="🌿")
+                cat_emoji = st.text_input("Emoji", value="🌿")
                 cat_desc = st.text_input("Description")
                 
                 if st.form_submit_button("Add Category"):
                     if cat_name:
-                        add_category(cat_name, cat_icon, cat_desc)
-                        st.success(f"✅ Added '{cat_name}' category!")
+                        if add_category(cat_name, cat_emoji, cat_desc):
+                            st.success(f"✅ Added '{cat_name}'!")
+                            st.rerun()
+                        else:
+                            st.error("Category already exists!")
+        
+        with subtab2:
+            cats = get_categories()
+            if not cats.empty:
+                st.markdown("### Edit or Delete Categories")
+                for _, cat in cats.iterrows():
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    col1.write(f"{cat['emoji']} {cat['name']}")
+                    
+                    if col2.button("✏️", key=f"edit_{cat['id']}", use_container_width=True):
+                        with st.form(f"edit_cat_{cat['id']}"):
+                            new_name = st.text_input("Name", value=cat['name'])
+                            new_emoji = st.text_input("Emoji", value=cat['emoji'])
+                            new_desc = st.text_input("Description", value=cat['description'] or "")
+                            
+                            if st.form_submit_button("Update"):
+                                update_category(cat['id'], new_name, new_emoji, new_desc)
+                                st.success("✅ Updated!")
+                                st.rerun()
+                    
+                    if col3.button("🗑️", key=f"del_{cat['id']}", use_container_width=True):
+                        delete_category(cat['id'])
+                        st.success("✅ Deleted!")
                         st.rerun()
     
-    # TAB 3: Products Management
+    # TAB 3: PRODUCTS
     with admin_tabs[2]:
         st.markdown("### Manage Products")
         
-        ptabs = st.tabs(["View All", "Add New", "Edit", "Delete"])
+        ptabs = st.tabs(["View", "Add", "Edit"])
         
-        # View All
         with ptabs[0]:
-            all_products = get_products()
-            if not all_products.empty:
-                st.dataframe(all_products[['id', 'title', 'category_name', 'subcategory_name', 'sale_price', 'badge']], use_container_width=True)
-            else:
+            prods = get_products()
+            if prods.empty:
                 st.info("No products yet!")
+            else:
+                st.dataframe(prods[['name', 'category_name', 'price', 'discount_price', 'badge']], use_container_width=True, hide_index=True)
         
-        # Add New
         with ptabs[1]:
-            with st.form("add_product_form"):
-                categories_df = get_categories()
-                selected_cat = st.selectbox("Category", categories_df['name'].tolist())
-                cat_id = categories_df[categories_df['name'] == selected_cat]['id'].values[0]
-                subcats_df = get_subcategories(cat_id)
+            with st.form("add_prod_form"):
+                cats = get_categories()
                 
-                if not subcats_df.empty:
-                    selected_subcat = st.selectbox("Subcategory", subcats_df['name'].tolist())
-                    subcat_id = subcats_df[subcats_df['name'] == selected_subcat]['id'].values[0]
+                if cats.empty:
+                    st.error("Please create a category first!")
                 else:
-                    st.warning("Please add subcategories first!")
-                    subcat_id = None
+                    cat_name = st.selectbox("Category *", cats['name'].tolist())
+                    cat_id = cats[cats['name'] == cat_name]['id'].values[0]
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        prod_name = st.text_input("Product Name *")
+                        prod_price = st.number_input("Price ₹", min_value=1.0, value=299.0)
+                        prod_badge = st.text_input("Badge (e.g., Best Seller ⭐)")
+                    with col2:
+                        prod_disc = st.number_input("Discount Price ₹", min_value=0.0, value=0.0)
+                        prod_rating = st.number_input("Rating", min_value=0.0, max_value=5.0, value=5.0)
+                        prod_reviews = st.number_input("Reviews", min_value=0, value=0)
+                    
+                    prod_desc = st.text_area("Description")
+                    prod_ingr = st.text_input("Ingredients")
+                    prod_ben = st.text_area("Benefits")
+                    prod_img = st.file_uploader("Product Image", type=["jpg", "jpeg", "png", "webp"])
+                    
+                    if st.form_submit_button("Add Product"):
+                        if prod_name:
+                            img_bytes = prod_img.read() if prod_img else None
+                            add_product(cat_id, prod_name, prod_desc, prod_ingr, prod_ben, prod_price, prod_disc if prod_disc > 0 else None, prod_badge, img_bytes)
+                            st.success(f"✅ Added '{prod_name}'!")
+                            st.rerun()
+        
+        with ptabs[2]:
+            prods = get_products()
+            if not prods.empty:
+                selected_prod = st.selectbox("Select Product", prods['name'].tolist())
+                prod_data = prods[prods['name'] == selected_prod].iloc[0]
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    prod_title = st.text_input("Product Title")
-                    prod_ingredients = st.text_input("Ingredients/Key Actives")
-                    prod_reg_price = st.number_input("Regular Price", min_value=1.0, value=299.0)
-                with col2:
-                    prod_sale_price = st.number_input("Sale Price", min_value=1.0, value=199.0)
-                    prod_badge = st.text_input("Badge", placeholder="e.g., Best Seller 🌟")
-                
-                prod_desc = st.text_area("Description")
-                prod_benefits = st.text_area("Benefits (comma-separated)")
-                
-                st.markdown("**Upload Product Images** (up to 4)")
-                uploaded_files = st.file_uploader("Choose images", type=['jpg', 'jpeg', 'png', 'webp'], accept_multiple_files=True)
-                
-                if st.form_submit_button("Add Product"):
-                    if prod_title and subcat_id:
-                        prod_id = add_product(subcat_id, prod_title, prod_ingredients, prod_reg_price, prod_sale_price, prod_desc, prod_benefits, prod_badge)
-                        
-                        if uploaded_files:
-                            for idx, file in enumerate(uploaded_files[:4]):
-                                img_bytes = file.read()
-                                add_product_image(prod_id, img_bytes, alt_text=f"Photo {idx+1}", is_primary=(idx==0))
-                        
-                        st.success(f"✅ Added '{prod_title}' with {len(uploaded_files)} images!")
+                with st.form("edit_prod_form"):
+                    prod_name = st.text_input("Name", value=prod_data['name'])
+                    prod_price = st.number_input("Price", value=float(prod_data['price']))
+                    prod_disc = st.number_input("Discount Price", value=float(prod_data['discount_price']) if prod_data['discount_price'] else 0.0)
+                    prod_badge = st.text_input("Badge", value=prod_data['badge'] or "")
+                    prod_desc = st.text_area("Description", value=prod_data['description'] or "")
+                    prod_ingr = st.text_input("Ingredients", value=prod_data['ingredients'] or "")
+                    prod_ben = st.text_area("Benefits", value=prod_data['benefits'] or "")
+                    prod_img = st.file_uploader("New Image (optional)", type=["jpg", "jpeg", "png", "webp"])
+                    
+                    if st.form_submit_button("Update Product"):
+                        img_bytes = prod_img.read() if prod_img else None
+                        update_product(prod_data['id'], prod_name, prod_desc, prod_ingr, prod_ben, prod_price, prod_disc if prod_disc > 0 else None, prod_badge, img_bytes)
+                        st.success("✅ Updated!")
                         st.rerun()
     
-    # TAB 4: Orders
+    # TAB 4: ORDERS
     with admin_tabs[3]:
-        st.markdown("### Manage Customer Orders")
+        st.markdown("### Manage Orders")
         orders_df = get_orders()
         
-        if not orders_df.empty:
+        if orders_df.empty:
+            st.info("No orders yet!")
+        else:
             for _, order in orders_df.iterrows():
-                col1, col2, col3 = st.columns([2, 1, 1])
-                col1.markdown(f"**{order['customer_name']}** - Order #YS-{order['id']:04d}")
-                col2.markdown(f"₹{int(order['total_amount'])}")
+                col1, col2 = st.columns([4, 1])
+                col1.write(f"**Order #OISHI-{order['id']:04d}** - {order['customer_name']} - ₹{int(order['total_amount'])}")
                 
-                new_status = col3.selectbox(
+                new_status = col2.selectbox(
                     "Status",
-                    ["Order Confirmed ✅", "Processing 🔄", "Shipped 🚚", "Delivered 📦", "Cancelled ❌"],
-                    index=["Order Confirmed ✅", "Processing 🔄", "Shipped 🚚", "Delivered 📦", "Cancelled ❌"].index(order['status']),
+                    ["Confirmed ✅", "Processing 🔄", "Shipped 🚚", "Delivered 📦"],
+                    index=["Confirmed ✅", "Processing 🔄", "Shipped 🚚", "Delivered 📦"].index(order['status']),
                     key=f"status_{order['id']}"
                 )
                 
                 if new_status != order['status']:
                     update_order_status(order['id'], new_status)
                     st.success("Updated!")
+                    st.rerun()
 
-st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #999; margin-top: 40px;'>✨ Made with 💚 for organic wellness ✨</p>", unsafe_allow_html=True)
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #999; padding: 20px 0;'>✨ OISHI - Purely Herbal, Purely Divine ✨</p>", unsafe_allow_html=True)
