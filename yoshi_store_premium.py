@@ -976,7 +976,7 @@ elif current_page == "admin":
     with admin_tabs[1]:
         st.markdown("### Manage Categories")
         
-        subtab1, subtab2 = st.tabs(["View", "Add", "Edit/Delete"])
+        subtab1, subtab2, subtab3 = st.tabs(["View", "Add", "Edit/Delete"])
         
         with subtab1:
             cats = get_categories()
